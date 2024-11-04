@@ -1,0 +1,60 @@
+Overview
+This program simulates a train dispatching system with concurrent threading, queue management, and priority-based access control to a shared track. The simulation coordinates loading, waiting, and crossing states for trains moving in either an east or west direction.
+
+Features
+Concurrent Processing: Uses threads to simulate trains loading, waiting, and crossing the track.
+Priority and Direction-Based Dispatching: Trains have a priority (low or high) and a direction (east or west). Priority and direction are used to determine the order of access to the shared track.
+Conditional Waiting and Signaling: Implements conditional variables and mutexes for coordinating train states.
+Load and Track Time Simulation: Simulates loading and crossing times using specified durations for each train.
+Avoids Starvation: Ensures fairness by switching train directions after a set number of consecutive trains to prevent starvation.
+Getting Started
+Prerequisites
+GCC (or any other C compiler that supports POSIX threads)
+Linux environment (for pthread and clock_gettime)
+Compilation
+Compile the code using gcc with pthread support:
+
+bash
+Copy code
+gcc -o train_dispatcher train_dispatcher.c -lpthread
+Running the Program
+After compiling, run the executable:
+
+bash
+Copy code
+./train_dispatcher
+Output logs will be generated in the output.log file.
+
+Code Structure
+Key Components
+Train Struct: Holds information for each train, including ID, priority, direction, load time, track time, loading status, and crossing status.
+Queue Struct: Queue of trains waiting to load and cross. Protected by a mutex and condition variable for thread-safe access.
+Dispatcher Thread: The dispatcher manages track access based on priority and direction. It selects the next train to cross using find_train, ensuring that high-priority trains are prioritized and that direction alternates to avoid starvation.
+Train Threads: Each train is loaded, waits for dispatch, and then crosses the track based on its assigned load and track time.
+Function Descriptions
+init_queue(): Initializes a queue with mutex and condition variables.
+enqueue(): Adds a train to the queue in a thread-safe way.
+remove_train(): Removes a train from the queue after crossing.
+print_timestamped_message(): Logs timestamped messages indicating train status.
+find_train(): Determines the next train to dispatch based on priority and direction rules.
+dispatcher(): Main logic for dispatching trains to the track, enforcing direction switching to prevent starvation.
+train_thread(): Simulates train loading, then notifies the dispatcher once loading is complete.
+Logging
+Logs provide a timestamped sequence of train events:
+
+When a train is ready to load
+When a train is dispatched onto the track
+When a train exits the track
+Log Example
+plaintext
+Copy code
+00:00:05.1 Train 1 is ready to go East
+00:00:08.5 Train 1 is ON the main track going East
+00:00:10.5 Train 1 is OFF the main track after going East
+Notes
+Concurrent Access Control: Uses pthread_mutex and pthread_cond to ensure that only one train crosses at a time.
+Avoid Starvation: Implements fairness by tracking consecutive trains in one direction and prioritizing the opposite direction after a threshold.
+Output Log File: Default output log file is output.log. Make sure the program has write access to create or modify this file.
+Customization
+Train Count: Modify MAX_TRAINS to change the maximum number of trains.
+Load and Track Time: Adjust individual train load_time and track_time values to change simulation speed.
