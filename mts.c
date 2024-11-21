@@ -45,7 +45,14 @@ void init_queue(Queue* queue) {
     pthread_cond_init(&queue->cond, NULL); // added change here
 }
 
+// Convert timespec to seconds
+double timespec_to_seconds(struct timespec *ts) {
+    return ((double) ts->tv_sec) + (((double) ts->tv_nsec) / NANOSECOND_CONVERSION);
+}
+
 void enqueue(Queue* queue, Train* train) {
+
+
     Node* new_node = (Node*)malloc(sizeof(Node));
     new_node->train = train;
     new_node->next = NULL;
@@ -65,13 +72,47 @@ void enqueue(Queue* queue, Train* train) {
     pthread_mutex_unlock(&queue->mutex); // Unlock the queue
 }
 
+
+void print_queue_state(Queue* queue) {
+    // Lock the queue mutex to ensure safe access
+    pthread_mutex_lock(&queue->mutex);
+
+    printf("Queue state:\n");
+    if (queue->head == NULL) {
+        printf("The queue is empty.\n");
+    } else {
+        Node* current = queue->head;
+        while (current != NULL) {
+            Train* train = current->train; // Access the train in the current node
+            printf("Train ID: %d, Direction: %c, Loading Time: %d, Crossing Time: %d\n",
+                   train->train_id, train->direction, train->load_time, train->track_time);
+            current = current->next;
+        }
+    }
+
+    // Unlock the queue mutex
+    pthread_mutex_unlock(&queue->mutex);
+}
+
+
 void remove_train(Queue* queue, int train_id) {
     pthread_mutex_lock(&queue->mutex);
+
+
+
+
     Node* current = queue->head;
     Node* previous = NULL;
 
     while (current != NULL) {
+        if (!current->train) {
+            printf("Encountered invalid node.\n");
+            break;
+        }
+
+
         if (current->train->train_id == train_id) {
+
             if (previous == NULL) {
                 // We're at the head of the queue
                 queue->head = current->next;
@@ -83,19 +124,20 @@ void remove_train(Queue* queue, int train_id) {
                 queue->tail = previous;
             }
 
-            free(current); // Free the removed node
+            free(current);  // Free the removed node
+
             break;
         }
+
         previous = current;
- FILE *output_file = freopen("output.log", "w", stdout);
-    if (output_file == NULL) {
-        perror("Error opening output file");
-        exit(EXIT_FAILURE);
-    }        current = current->next;
+        current = current->next;
     }
+
+
 
     pthread_mutex_unlock(&queue->mutex);
 }
+
 
 // Global variables
 Queue* waiting_queue;
@@ -110,10 +152,6 @@ struct timespec start_time = { 0 };
 
 volatile bool shutdown = false;
 
-// Convert timespec to seconds
-double timespec_to_seconds(struct timespec *ts) {
-    return ((double) ts->tv_sec) + (((double) ts->tv_nsec) / NANOSECOND_CONVERSION);
-}
 
 void print_timestamped_message(const char* message, int train_id, char direction) {
     struct timespec current_time;
@@ -203,7 +241,7 @@ void* dispatcher(void* arg) {
     Queue* waiting_queue = args->waiting_queue;  // added change here
     int total_trains = args->total_trains;       // added change here
     int processed_trains = 0;                    // added change here
-    
+
      int consecutive_count = 1; // Track consecutive trains in the same direction
 
     bool track_busy = false; // Flag to track if the track is busy
@@ -249,11 +287,15 @@ void* dispatcher(void* arg) {
         // Simulate the track crossing time
         usleep((next_train->track_time / 10.0) * 1e6); // Convert seconds to microseconds
 
+
         // Update the last direction
         last_train_direction = next_train->direction;
 
+        //print_queue_state(waiting_queue);
         // Remove the train from the queue after crossing
         remove_train(waiting_queue, next_train->train_id);
+
+
         print_timestamped_message("is OFF the main track after going", next_train->train_id, next_train->direction);
 
         processed_trains++; // Increment the count of processed trains // added change here
@@ -265,50 +307,9 @@ void* dispatcher(void* arg) {
 
         pthread_mutex_unlock(&track_mutex); // Unlock the track mutex
     }
-
-    // Train thread function
-void* train_thread(void* arg) {
-    Train* original_pointer = (Train*)arg;
-
-    // Wait until the start signal is given
-    pthread_mutex_lock(&start_timer);
-    while (!ready_to_load) {
-        pthread_cond_wait(&train_ready_to_load, &start_timer);
-    }
-    pthread_mutex_unlock(&start_timer);
-
-    // Calculate loading time in seconds
-    double loading_duration = original_pointer->load_time / 10.0;
-
-    // Simulate the loading time by sleeping
-    usleep((int)(loading_duration * 1e6)); // Convert seconds to microseconds
-
-    // Get the time when loading is completed
-    struct timespec ready_time;
-    clock_gettime(CLOCK_MONOTONIC, &ready_time);
-
-    // Enqueue the train after loading
-    enqueue(waiting_queue, original_pointer);
-
-    // Format and print readiness message
-    double elapsed = timespec_to_seconds(&ready_time) - timespec_to_seconds(&start_time);
-    int hours = (int)elapsed / 3600;
-    int minutes = ((int)elapsed % 3600) / 60;
-    double seconds = elapsed - (hours * 3600) - (minutes * 60);
-    printf("%02d:%02d:%04.1f Train %d is ready to go %s\n",
-           hours, minutes, seconds,
-           original_pointer->train_id,
-           original_pointer->direction == 'E' ? "East" : "West");
-
-    // Removed unnecessary signaling and mutex // added change here
-
-    pthread_exit(NULL);
-}// Clean up mutex and condition variable
-    pthread_mutex_destroy(&track_mutex);
-    pthread_cond_destroy(&track_cond);
-   
-    return NULL;
 }
+    // Train thread function
+
 
 // Train thread function
 void* train_thread(void* arg) {
@@ -332,7 +333,7 @@ void* train_thread(void* arg) {
     clock_gettime(CLOCK_MONOTONIC, &ready_time);
 
     // Enqueue the train after loading
-    enqueue(waiting_queue, original_pointer);
+
 
     // Format and print readiness message
     double elapsed = timespec_to_seconds(&ready_time) - timespec_to_seconds(&start_time);
@@ -345,7 +346,7 @@ void* train_thread(void* arg) {
            original_pointer->direction == 'E' ? "East" : "West");
 
     // Removed unnecessary signaling and mutex // added change here
-
+     enqueue(waiting_queue, original_pointer);
     pthread_exit(NULL);
 }
 
@@ -415,7 +416,7 @@ int main(int argc, char* argv[]) {
     dispatcher_args.waiting_queue = waiting_queue; // added change here
     dispatcher_args.total_trains = train_count;    // added change here
 
-	 FILE *output_file = freopen("output.txt", "w", stdout);
+         FILE *output_file = freopen("output.txt", "w", stdout);
     if (output_file == NULL) {
         perror("Error opening output file");
         exit(EXIT_FAILURE);
@@ -446,8 +447,8 @@ int main(int argc, char* argv[]) {
     start_trains();
 
     // Open the file
-    
-    
+
+
     // Join train threads
     for (int i = 0; i < train_count; i++) {
         pthread_join(threads[i], NULL);
