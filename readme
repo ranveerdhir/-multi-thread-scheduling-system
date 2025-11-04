@@ -1,60 +1,156 @@
-Overview
-This program simulates a train dispatching system with concurrent threading, queue management, and priority-based access control to a shared track. The simulation coordinates loading, waiting, and crossing states for trains moving in either an east or west direction.
+# Train Dispatcher — Concurrent Track Simulation
 
-Features
-Concurrent Processing: Uses threads to simulate trains loading, waiting, and crossing the track.
-Priority and Direction-Based Dispatching: Trains have a priority (low or high) and a direction (east or west). Priority and direction are used to determine the order of access to the shared track.
-Conditional Waiting and Signaling: Implements conditional variables and mutexes for coordinating train states.
-Load and Track Time Simulation: Simulates loading and crossing times using specified durations for each train.
-Avoids Starvation: Ensures fairness by switching train directions after a set number of consecutive trains to prevent starvation.
-Getting Started
-Prerequisites
-GCC (or any other C compiler that supports POSIX threads)
-Linux environment (for pthread and clock_gettime)
-Compilation
-Compile the code using gcc with pthread support:
+A small C program that simulates a train dispatching system. It uses POSIX threads to model trains that load, wait, and cross a single shared track. Access to the track is coordinated by a dispatcher that uses queues, priorities, and direction-aware scheduling to ensure safety and fairness.
 
-bash
-Copy code
+This README explains what the program does, how it works, and how to build, run, and customize the simulation.
+
+---
+
+## Table of contents
+
+- Overview
+- Features
+- How it works (high-level)
+- Build & run
+- Log output
+- Configuration & customization
+- Implementation notes (concurrency & fairness)
+- Troubleshooting
+- Contributing
+- License
+
+---
+
+## Overview
+
+Each "train" runs in its own thread. Trains have:
+- An ID
+- Direction: East or West
+- Priority: Low or High
+- load_time: time spent loading before wanting the track
+- track_time: time spent on the shared track when crossing
+
+A central dispatcher thread decides which loaded train may enter the single shared track. The system ensures only one train uses the track at a time while prioritizing high-priority trains and avoiding starvation of either direction.
+
+---
+
+## Features
+
+- Concurrent simulation using pthreads
+- Priority-based access (High > Low)
+- Direction-aware scheduling (East vs West)
+- Starvation avoidance by switching direction after a configurable number of consecutive trains
+- Timestamped logging to `output.log` (and stdout, if desired)
+- Easy to configure load/track times and number of trains
+
+---
+
+## How it works (high-level)
+
+1. Each train thread:
+   - Sleeps to simulate a load phase (load_time).
+   - Enters a shared queue marking it "ready".
+   - Waits on a condition variable for the dispatcher to give it access to the track.
+   - When allowed, simulates crossing for `track_time`, then signals completion.
+
+2. Dispatcher thread:
+   - Wakes when trains become ready.
+   - Selects the next train to cross using `find_train()` which:
+     - Prefers high-priority trains over low-priority trains.
+     - Enforces direction-based fairness: it tracks consecutive trains from the same direction and forces a direction switch after a threshold to avoid starvation.
+   - Notifies the selected train to cross.
+   - Waits for that train to finish, then repeats until all trains have crossed.
+
+3. Synchronization:
+   - A mutex protects queue state and shared dispatcher variables.
+   - Condition variables are used to signal newly-ready trains and to indicate track availability.
+
+---
+
+## Prerequisites
+
+- GCC (or another C compiler with pthread support)
+- Linux (or an environment with POSIX threads and `clock_gettime`)
+- Make sure you have write permission to the working directory to create `output.log`.
+
+---
+
+## Build
+
+Compile using gcc with pthread support:
+
+```bash
 gcc -o train_dispatcher train_dispatcher.c -lpthread
-Running the Program
-After compiling, run the executable:
+```
 
-bash
-Copy code
+(Replace `gcc` with your compiler of choice if necessary.)
+
+---
+
+## Run
+
+Run the executable:
+
+```bash
 ./train_dispatcher
-Output logs will be generated in the output.log file.
+```
 
-Code Structure
-Key Components
-Train Struct: Holds information for each train, including ID, priority, direction, load time, track time, loading status, and crossing status.
-Queue Struct: Queue of trains waiting to load and cross. Protected by a mutex and condition variable for thread-safe access.
-Dispatcher Thread: The dispatcher manages track access based on priority and direction. It selects the next train to cross using find_train, ensuring that high-priority trains are prioritized and that direction alternates to avoid starvation.
-Train Threads: Each train is loaded, waits for dispatch, and then crosses the track based on its assigned load and track time.
-Function Descriptions
-init_queue(): Initializes a queue with mutex and condition variables.
-enqueue(): Adds a train to the queue in a thread-safe way.
-remove_train(): Removes a train from the queue after crossing.
-print_timestamped_message(): Logs timestamped messages indicating train status.
-find_train(): Determines the next train to dispatch based on priority and direction rules.
-dispatcher(): Main logic for dispatching trains to the track, enforcing direction switching to prevent starvation.
-train_thread(): Simulates train loading, then notifies the dispatcher once loading is complete.
-Logging
-Logs provide a timestamped sequence of train events:
+By default the program writes timestamped logs to `output.log`.
 
-When a train is ready to load
-When a train is dispatched onto the track
-When a train exits the track
-Log Example
-plaintext
-Copy code
-00:00:05.1 Train 1 is ready to go East
-00:00:08.5 Train 1 is ON the main track going East
-00:00:10.5 Train 1 is OFF the main track after going East
-Notes
-Concurrent Access Control: Uses pthread_mutex and pthread_cond to ensure that only one train crosses at a time.
-Avoid Starvation: Implements fairness by tracking consecutive trains in one direction and prioritizing the opposite direction after a threshold.
-Output Log File: Default output log file is output.log. Make sure the program has write access to create or modify this file.
-Customization
-Train Count: Modify MAX_TRAINS to change the maximum number of trains.
-Load and Track Time: Adjust individual train load_time and track_time values to change simulation speed.
+---
+
+## Example log output
+
+Sample lines from `output.log`:
+
+```
+00:00:05.100 Train 1 is ready to go East (High)
+00:00:08.500 Train 1 is ON the main track going East (High)
+00:00:10.500 Train 1 is OFF the main track after going East (High)
+```
+
+Timestamp format: HH:MM:SS.milliseconds since simulation start.
+
+---
+
+## Configuration & customization
+
+You can modify behavior in the source code. Typical parameters to change:
+
+- MAX_TRAINS — change maximum number of trains.
+- Per-train fields — modify each train's `load_time`, `track_time`, `priority`, and `direction` in the initialization section.
+- STARVATION_THRESHOLD — number of consecutive trains in a direction before forcing a direction switch to avoid starvation.
+
+Search for these identifiers in `train_dispatcher.c` and change numeric values or initialization arrays to adjust simulation behavior.
+
+---
+
+## Implementation notes (concurrency & fairness)
+
+- Only one train can be on the track at a time. This is enforced by the dispatcher and protected by mutexes and condition variables.
+- High-priority trains are always considered before low-priority ones when both directions have waiting trains.
+- To prevent starvation of one direction, the dispatcher tracks how many trains have crossed consecutively in the same direction; after the configured threshold is reached it prefers the opposite direction (if trains are waiting).
+- The queue is a thread-safe structure protected by a mutex. Trains enqueue themselves when they are ready and dequeue after crossing.
+
+---
+
+## Troubleshooting
+
+- Program doesn't start / compilation errors:
+  - Ensure `-lpthread` is used and headers `<pthread.h>` and `<time.h>` are available.
+- output.log not created:
+  - Check working directory permissions. The program needs write access.
+- Unexpected ordering:
+  - Ordering is determined by priority and the starvation threshold. Tweak per-train settings and thresholds to test different scenarios.
+- Deadlock suspected:
+  - Confirm condition variables are signaled correctly in the code paths where trains finish crossing and when trains become ready.
+
+---
+
+## Extending the simulation
+
+Ideas:
+- Add multiple tracks and simulate routing/priority between tracks.
+- Add weighted priority or aging to further avoid long waits.
+- Add more detailed metrics: wait times, average throughput, timeline visualizer.
+- Export logs in CSV or JSON for post-processing.
